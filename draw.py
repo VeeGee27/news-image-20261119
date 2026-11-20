@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Render the 19 November 2026 front page, full-day edition: 36 stories.
+"""Render the 19 November 2026 front page, final full-day edition: 30 stories.
 
-Fresh renderer written for the news-image-20261119 bounty (v2). v1 carried
-only 11 morning stories and rated 97.54%; v2 keeps those 11 and adds 25
-verified afternoon/evening stories, weighted by consequence, not count.
-Every story is numbered 1-36; the number on each panel badge, each map
+Written fresh for the news-image-20261119 final rebuild (20 Nov 2026).
+v1 rated 97.54% (11 morning stories); v2 rated 97.08% (36 stories, map
+crowded with 35 numbered badges, also-on captions trimmed to <=36 chars).
+This rebuild follows v1's discipline: 30 stories, weight over count, every
+mid illustrated, also-on captions of 50-70 characters with a verb and a
+fact, and a 12-marker numbered map budget so the digits stay readable.
+Every story is numbered 1-30; the number on each panel badge, each map
 marker and each also-on line is the same number. Map continents are drawn
 from hand-written lon/lat outlines (equirectangular); every marker anchor
 is its story's real lon/lat, checked by a point-in-polygon test before
 drawing. Captions are complete sentences, never cut mid-sentence.
-Deterministic: no randomness beyond a fixed seed, no timestamps, no network.
+Deterministic: fixed seeds only, no timestamps, no network.
 """
 import os
+import random
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1024, 1024
@@ -43,9 +47,10 @@ def font(path, size):
 
 # ---------------------------------------------------------------- stories
 # (num, kind, tag, headline, caption, lon, lat, continent)
-# lon/lat None -> no map dot (deep space). Heroes: headline <= 44 chars,
-# caption <= 3 lines. Mids: headline <= 44 chars, caption <= 4 lines.
-# Also-on: caption is one terse sentence (tag drawn bold in front).
+# Heroes: headline <= 44 chars, caption <= 3 lines.
+# Mids: headline <= 44 chars, caption <= 2 lines at 10.5pt.
+# Also-on: caption 50-70 chars, verb + fact, never trimmed.
+# lon/lat None -> no map dot (deep space).
 STORIES = [
     (1, "hero", "DIPLOMACY",
      "Trump, Xi and Putin hold a first trilateral",
@@ -54,8 +59,8 @@ STORIES = [
      114.06, 22.55, "asia"),
     (2, "hero", "CULTURE",
      "GTA VI launches worldwide at midnight",
-     "Rockstar's most awaited game launches worldwide on PS5 and Xbox at "
-     "$79.99. Sensor Tower counts 17m copies sold, worth $1.65bn.",
+     "Rockstar's most awaited game launches worldwide on PS5 and Xbox "
+     "at $79.99. Sensor Tower counts 17m copies sold, worth $1.65bn.",
      -74.01, 40.71, "namerica"),
     (3, "hero", "MARKETS",
      "Anthropic debuts in the biggest IPO ever",
@@ -64,126 +69,108 @@ STORIES = [
      -74.01, 40.71, "namerica"),
     (4, "mid", "JUSTICE",
      "World Court rules Myanmar killed Rohingya",
-     "The Hague finds Myanmar forces killed thousands of Rohingya; the "
-     "first state genocide merits ruling ever.",
+     "The Hague finds Myanmar killed thousands of Rohingya in a first ruling.",
      4.30, 52.10, "europe"),
     (5, "mid", "ASIA",
      "Bangladesh locked down amid arson",
-     "The Awami League calls a nationwide lockdown; clashes hit 28 of 64 "
-     "districts, 565 arrested in Dhaka.",
+     "Awami League lockdown sparks clashes in 28 of 64 districts; 565 arrested.",
      90.40, 23.80, "asia"),
     (6, "mid", "WAR",
      "Ukraine hits Crimea bridge a third time",
-     "Kyiv strikes the Kerch bridge overnight, the third attack in a week; "
-     "traffic and rail are suspended.",
+     "Kyiv strikes the Kerch bridge overnight, the third attack in a week.",
      36.40, 45.30, "europe"),
     (7, "mid", "WEATHER",
      "Akvan bears down on India's east coast",
-     "Over 47,000 people are in shelters in Odisha as the cyclone nears "
-     "landfall, due at noon on Friday.",
+     "Odisha moves 105,000+ to shelters as the cyclone nears landfall Friday noon.",
      85.50, 20.15, "asia"),
     (8, "mid", "SPACE",
      "Voyager 1 is one light-day from Earth",
-     "NASA confirms the 48-year-old probe crossed one light-day on "
-     "Wednesday \u2014 the farthest object ever flown.",
+     "NASA confirms the 48-year-old probe crossed one light-day \u2014 farthest ever.",
      None, None, "space"),
-    (9, "also", "INDIA\u2013JAPAN", "",
-     "First 2+2 talks in Tokyo.",
+    (9, "mid", "ASIA",
+     "India and Japan hold first 2+2 talks",
+     "First 2+2 talks in Tokyo since Aug 2024; defence R&D cooperation agreed.",
      139.69, 35.68, "asia"),
-    (10, "also", "XI AT APEC", "",
-     "China will lead Asia-Pacific.",
+    (10, "mid", "DIPLOMACY",
+     "Xi at APEC: China to lead the region",
+     "Xi says China will lead the Asia-Pacific order; $20m pledged for APEC work.",
      114.06, 22.55, "asia"),
-    (11, "also", "GOLD", "",
-     "Gold steadies near $3,743 an ounce.",
+    (11, "mid", "MARKETS",
+     "Gold steadies near $3,743 an ounce",
+     "Gold steadies near $3,743 after touching a 14-month low on Fed hike bets.",
      -0.10, 51.50, "europe"),
     (12, "also", "APEC", "",
-     "Leaders gather in Shenzhen.",
+     "APEC leaders gather in Shenzhen; adopt an Outlook on trade, data, AI.",
      114.06, 22.55, "asia"),
-    (13, "also", "GTA VI", "",
-     "YouTube streams the launch live.",
-     -122.43, 37.63, "namerica"),
-    (14, "also", "THAILAND", "",
-     "Heavy rain, flash floods warned.",
-     100.50, 13.76, "asia"),
-    (15, "also", "IEA", "",
-     "Hormuz crisis \u2018top energy threat\u2019.",
+    (13, "also", "IEA", "",
+     "IEA calls the Hormuz crisis the largest threat to energy security.",
      2.35, 48.85, "europe"),
-    (16, "also", "RIYADH", "",
-     "Houthi missile at Riyadh intercepted.",
+    (14, "also", "RIYADH", "",
+     "Houthi missile aimed at Riyadh is intercepted by Saudi defences.",
      46.70, 24.70, "asia"),
-    (17, "also", "SEOUL", "",
-     "Ex-PM Han wins retrial; term void.",
-     126.98, 37.57, "asia"),
-    (18, "also", "BLACKWELL", "",
-     "Trump: China may buy top AI chips.",
+    (15, "also", "IMF", "",
+     "IMF warns global public debt is nearing 100% of GDP, a post-war high.",
      114.06, 22.55, "asia"),
-    (19, "also", "IMF", "",
-     "Public debt set to top 100% of GDP.",
-     114.06, 22.55, "asia"),
-    (20, "also", "KOREA", "",
-     "Exports top $1tn \u2014 fourth ever.",
+    (16, "also", "KOREA", "",
+     "Korea's exports pass $1tn \u2014 the fourth country ever to reach the mark.",
      126.98, 37.57, "asia"),
-    (21, "also", "FIJI", "",
-     "Drought brings state of disaster.",
-     178.45, -18.14, "oceania"),
-    (22, "also", "INDONESIA", "",
-     "Forfeiture law passes, 18 years on.",
+    (17, "also", "INDONESIA", "",
+     "Asset-forfeiture law passes after 18 years of debate in Jakarta.",
      106.85, -6.21, "asia"),
-    (23, "also", "HONG KONG", "",
-     "Pipeline case dropped in Hong Kong.",
-     113.65, 22.45, "asia"),
-    (24, "also", "WELLINGTON", "",
-     "Pay-equity law ruled against women.",
-     174.78, -41.29, "oceania"),
-    (25, "also", "KAZAN", "",
-     "Drones hit Tatarstan oil facility.",
-     49.11, 55.79, "europe"),
-    (26, "also", "TOKYO", "",
-     "Japan\u2019s PM isolated at APEC summit.",
-     114.06, 22.55, "asia"),
-    (27, "also", "GAZA", "",
-     "Israel ends Gaza tank raid.",
+    (18, "also", "GAZA", "",
+     "Israel ends Gaza tank raid; aid groups rate the peace plan 4 of 26.",
      34.47, 31.50, "asia"),
-    (28, "also", "SYDNEY", "",
-     "General Pants in administration.",
-     151.21, -33.87, "oceania"),
-    (29, "also", "NEW YORK", "",
-     "Assadi wins fiction for Paradiso 17.",
-     -74.01, 40.71, "namerica"),
-    (30, "also", "CANBERRA", "",
-     "Jobless rate 4.9%, a five-year high.",
-     149.13, -35.28, "oceania"),
-    (31, "also", "AMMAN", "",
-     "589m children in conflict zones.",
-     35.93, 31.95, "asia"),
-    (32, "also", "NAIROBI", "",
-     "Drought leaves Kenya short of milk.",
-     36.82, -1.29, "africa"),
-    (33, "also", "FIRES", "",
-     "Fire emissions third-highest ever.",
+    (19, "also", "SEOUL", "",
+     "Ex-PM Han wins his retrial; a 15-year prison term is voided in Seoul.",
+     126.98, 37.57, "asia"),
+    (20, "also", "TOKYO", "",
+     "Japan's PM Takaichi stands isolated at the APEC summit in Shenzhen.",
+     139.69, 35.68, "asia"),
+    (21, "also", "FIJI", "",
+     "Fiji declares a state of disaster as El Ni\u00f1o drought grips its islands.",
+     178.45, -18.14, "oceania"),
+    (22, "also", "FIRES", "",
+     "Indonesia's fire emissions run third-highest on record, data show.",
      106.85, -6.21, "asia"),
-    (34, "also", "ANTALYA", "",
-     "Vanuatu demands COP31 reform.",
+    (23, "also", "ANTALYA", "",
+     "Vanuatu demands COP31 reform as climate talks open in Antalya.",
      30.71, 36.90, "asia"),
-    (35, "also", "WALL ST", "",
-     "Russell 2000 flashes \u2018death cross\u2019.",
+    (24, "also", "CANBERRA", "",
+     "Canberra jobless rate hits 4.9%, a five-year high, ABS data show.",
+     149.13, -35.28, "oceania"),
+    (25, "also", "SENATE", "",
+     "US Senate rejects the Iran war-powers resolution by 51 votes to 48.",
+     -77.04, 38.90, "namerica"),
+    (26, "also", "LONDON", "",
+     "UK and Norway pledge \u00a3100m+ for two fast attack boats for Ukraine.",
+     -0.13, 51.51, "europe"),
+    (27, "also", "WALL ST", "",
+     "Dow falls 1,101 as the Anthropic debut fails to lift AI stocks.",
      -74.01, 40.71, "namerica"),
-    (36, "also", "BRUSSELS", "",
-     "MEPs allege China pressure on Taiwan.",
-     4.35, 50.85, "europe"),
+    (28, "also", "GREENLAND", "",
+     "Denmark approves the Greenland security deal with the US, 109\u20130.",
+     12.57, 55.68, "europe"),
+    (29, "also", "THAILAND", "",
+     "Thailand warns of flash floods as heavy rain lashes the southern coast.",
+     100.50, 13.76, "asia"),
+    (30, "also", "KAZAN", "",
+     "Drones hit a Tatarstan oil facility 1,300 km inside Russia.",
+     49.11, 55.79, "europe"),
 ]
 
-COUNT_LINE = "36 STORIES \u00b7 5 CONTINENTS \u00b7 1 LIGHT-DAY \u00b7 ONE PAGE"
+COUNT_LINE = "30 STORIES \u00b7 4 CONTINENTS \u00b7 ONE PAGE"
 FOOTER = ("Every story here happened or was first reported on Thursday "
           "19 November 2026.")
-SOURCES = ("Sources: Reuters, Al Jazeera, BBC, PTI, IMD, Nasdaq, Save the "
-           "Children, IEA, IMF. Original drawings.")
+SOURCES = ("Sources: Reuters, Al Jazeera, BBC, PTI, IMD, Nasdaq, IEA, IMF, "
+           "AFP, GOV.UK, ABS. Original drawings.")
 
 NUMBERS = [
     ("17M", "GTA VI COPIES SOLD DAY ONE"),
     ("$81.3BN", "ANTHROPIC IPO \u2014 BIGGEST EVER"),
-    ("589M", "CHILDREN IN CONFLICT ZONES"),
     ("$1TN", "SOUTH KOREA EXPORTS IN 2026"),
+    ("105,000", "AKVAN EVACUEES IN ODISHA"),
+    ("100%", "GLOBAL DEBT VS GDP (IMF)"),
+    ("1 LIGHT-DAY", "VOYAGER 1 FROM EARTH"),
 ]
 
 TAG_COLORS = {
@@ -324,6 +311,7 @@ def check_markers():
     lines.append(f"MAP CHECK: {ok}/{total} anchors on the right continent")
     return ok == total, "\n".join(lines)
 
+
 # ------------------------------------------------------------- text helpers
 def wrap(draw, text, fnt, width):
     """Greedy word wrap; returns a list of lines that all fit `width`."""
@@ -352,12 +340,6 @@ def draw_wrapped(draw, x, y, text, fnt, width, fill=INK, leading=None):
     return y
 
 
-def text_h(draw, text, fnt, width, leading=None):
-    if leading is None:
-        leading = int(fnt.size * 1.28)
-    return len(wrap(draw, text, fnt, width)) * leading
-
-
 def badge(draw, cx, cy, num, color, r=11):
     draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color,
                  outline=(255, 255, 255), width=2)
@@ -367,150 +349,353 @@ def badge(draw, cx, cy, num, color, r=11):
     th = f.size
     draw.text((cx - tw / 2, cy - th / 2 - 1), t, font=f, fill=(255, 255, 255))
 
+
 # ------------------------------------------------------------ hero artwork
-# Simple original geometric drawings, one per hero story.
+# Original illustrated scenes, one per hero story. All PIL primitives.
 def art_summit(draw, x, y, w, h):
-    """Three flags above a summit table: US, China, Russia."""
-    draw.rectangle([x, y, x + w, y + h], fill=(235, 228, 210))
-    fw, fh = w // 3 - 10, h - 46
-    fy = y + 6
-    # US flag: stripes + blue canton with star dots
-    fx = x + 5
-    for i in range(7):
-        c = (178, 34, 34) if i % 2 == 0 else (255, 255, 255)
-        draw.rectangle([fx, fy + i * fh // 7, fx + fw,
-                        fy + (i + 1) * fh // 7], fill=c)
-    draw.rectangle([fx, fy, fx + fw * 2 // 5, fy + fh * 4 // 7],
-                   fill=(31, 73, 125))
-    for sx in range(3):
-        for sy in range(2):
-            draw.ellipse([fx + 4 + sx * 11, fy + 4 + sy * 9,
-                          fx + 8 + sx * 11, fy + 8 + sy * 9],
-                         fill=(255, 255, 255))
-    # China flag: red field, one big gold star + small ones
-    fx = x + w // 3 + 5
-    draw.rectangle([fx, fy, fx + fw, fy + fh], fill=(222, 41, 16))
-    draw.ellipse([fx + 5, fy + 5, fx + 17, fy + 17], fill=(255, 222, 0))
-    for sx, sy in [(27, 3), (33, 11), (27, 19)]:
-        draw.ellipse([fx + sx, fy + sy, fx + sx + 6, fy + sy + 6],
-                     fill=(255, 222, 0))
-    # Russia flag: white / blue / red horizontal bands
-    fx = x + 2 * w // 3 + 5
-    for i, c in enumerate([(255, 255, 255), (31, 73, 180), (200, 30, 30)]):
-        draw.rectangle([fx, fy + i * fh // 3, fx + fw,
-                        fy + (i + 1) * fh // 3], fill=c,
-                       outline=(180, 175, 160))
-    # table, legs and three chairs
-    ty = y + h - 30
-    draw.rectangle([x + 12, ty, x + w - 12, ty + 7], fill=(120, 84, 50))
-    draw.rectangle([x + 28, ty + 7, x + 36, ty + 24], fill=(120, 84, 50))
-    draw.rectangle([x + w - 36, ty + 7, x + w - 28, ty + 24],
-                   fill=(120, 84, 50))
-    for cx in (x + w // 2 - 44, x + w // 2, x + w // 2 + 44):
-        draw.rectangle([cx - 11, ty - 20, cx + 11, ty - 2],
-                       fill=(90, 84, 72))
-    draw.text((x + w // 2 - 34, y + h - 15), "SHENZHEN",
+    """Summit table with three seated figures and three flags behind."""
+    draw.rectangle([x, y, x + w, y + h], fill=(238, 232, 214))
+    # back wall band + floor
+    draw.rectangle([x, y, x + w, y + 14], fill=(210, 198, 170))
+    # three flag poles with waving flags
+    flags = [
+        ("us", (31, 73, 125)),
+        ("cn", (222, 41, 16)),
+        ("ru", (200, 30, 30)),
+    ]
+    fw, fh = 62, 34
+    for i, (code, _) in enumerate(flags):
+        fx = x + 18 + i * (w - 36 - fw) // 2
+        fy = y + 16
+        draw.line([fx + fw // 2, fy - 8, fx + fw // 2, fy + fh + 4],
+                  fill=(90, 84, 72), width=2)
+        if code == "us":
+            for s in range(7):
+                c = (178, 34, 34) if s % 2 == 0 else (255, 255, 255)
+                draw.rectangle([fx, fy + s * fh // 7, fx + fw,
+                                fy + (s + 1) * fh // 7], fill=c)
+            draw.rectangle([fx, fy, fx + fw * 2 // 5, fy + fh * 4 // 7],
+                           fill=(31, 73, 125))
+            for sx in range(3):
+                for sy in range(2):
+                    draw.ellipse([fx + 3 + sx * 8, fy + 3 + sy * 7,
+                                  fx + 6 + sx * 8, fy + 6 + sy * 7],
+                                 fill=(255, 255, 255))
+        elif code == "cn":
+            draw.rectangle([fx, fy, fx + fw, fy + fh], fill=(222, 41, 16))
+            draw.ellipse([fx + 5, fy + 5, fx + 15, fy + 15],
+                         fill=(255, 222, 0))
+            for sx, sy in [(24, 3), (30, 10), (24, 17)]:
+                draw.ellipse([fx + sx, fy + sy, fx + sx + 5, fy + sy + 5],
+                             fill=(255, 222, 0))
+        else:
+            for s, c in enumerate([(255, 255, 255), (31, 73, 180),
+                                   (200, 30, 30)]):
+                draw.rectangle([fx, fy + s * fh // 3, fx + fw,
+                                fy + (s + 1) * fh // 3], fill=c,
+                               outline=(180, 175, 160))
+    # three seated figures: head + shoulders behind the table
+    ty = y + h - 26
+    suits = [(31, 73, 125), (178, 34, 34), (58, 58, 120)]
+    for i, suit in enumerate(suits):
+        cx = x + w // 2 + (i - 1) * (w // 3 - 6)
+        draw.ellipse([cx - 11, ty - 34, cx + 11, ty - 12],
+                     fill=(232, 205, 170), outline=(120, 84, 50))
+        draw.polygon([(cx - 20, ty - 2), (cx + 20, ty - 2),
+                      (cx + 13, ty - 22), (cx - 13, ty - 22)], fill=suit)
+        draw.polygon([(cx - 4, ty - 20), (cx + 4, ty - 20),
+                      (cx, ty - 8)], fill=(255, 255, 255))
+    # table with cloth + name cards
+    draw.rectangle([x + 10, ty, x + w - 10, ty + 8], fill=(120, 84, 50))
+    draw.rectangle([x + 10, ty + 8, x + w - 10, ty + 14], fill=(96, 64, 38))
+    draw.rectangle([x + 26, ty + 14, x + 34, ty + 22], fill=(96, 64, 38))
+    draw.rectangle([x + w - 34, ty + 14, x + w - 26, ty + 22],
+                   fill=(96, 64, 38))
+    draw.text((x + w // 2 - 30, y + h - 13), "SHENZHEN",
               font=font(SANS_B, 11), fill=MUTED)
 
 
 def art_gta(draw, x, y, w, h):
-    """Neon dusk skyline with a big VI and a low sun."""
-    import random
-    draw.rectangle([x, y, x + w, y + h], fill=(46, 28, 74))
-    draw.ellipse([x + w - 50, y + 6, x + w - 14, y + 42],
+    """Neon dusk skyline: gradient sky, low sun, lit windows, big VI."""
+    # gradient sky in three bands
+    for i, c in enumerate([(46, 28, 74), (96, 44, 96), (196, 84, 110)]):
+        draw.rectangle([x, y + i * h // 3, x + w, y + (i + 1) * h // 3],
+                       fill=c)
+    # low sun
+    draw.ellipse([x + w - 62, y + 8, x + w - 22, y + 48],
                  fill=(255, 190, 90))
+    draw.ellipse([x + w - 56, y + 14, x + w - 28, y + 42],
+                 fill=(255, 220, 150))
     rnd = random.Random(19)
     bx = x + 6
     while bx < x + w - 10:
         bw = rnd.randint(18, 34)
-        bh = rnd.randint(26, h - 60)
-        draw.rectangle([bx, y + h - 28 - bh, bx + bw, y + h - 28],
+        bh = rnd.randint(20, max(21, h - 52))
+        draw.rectangle([bx, y + h - 26 - bh, bx + bw, y + h - 26],
                        fill=(24, 14, 44))
         for wy in range(3):
             for wx in range(max(1, bw // 12)):
                 if rnd.random() < 0.5:
                     draw.rectangle(
-                        [bx + 3 + wx * 12, y + h - 24 - bh + wy * 12,
-                         bx + 8 + wx * 12, y + h - 19 - bh + wy * 12],
+                        [bx + 3 + wx * 12, y + h - 22 - bh + wy * 12,
+                         bx + 8 + wx * 12, y + h - 17 - bh + wy * 12],
                         fill=(255, 210, 120))
         bx += bw + 4
-    draw.rectangle([x, y + h - 28, x + w, y + h - 22], fill=(14, 110, 110))
-    f = font(SERIF_B, 42)
+    # water strip + reflection
+    draw.rectangle([x, y + h - 26, x + w, y + h - 20], fill=(14, 110, 110))
+    draw.rectangle([x, y + h - 20, x + w, y + h], fill=(10, 60, 70))
+    for rx in range(0, w, 26):
+        draw.line([x + rx, y + h - 8, x + rx + 14, y + h - 8],
+                  fill=(255, 190, 90), width=2)
+    # big VI, pink shadow + white face
+    f = font(SERIF_B, 40)
     draw.text((x + 12, y + 2), "VI", font=f, fill=(255, 120, 180))
     draw.text((x + 10, y + 0), "VI", font=f, fill=(255, 255, 255))
-    draw.text((x + w - 106, y + h - 17), "LEONIDA",
+    draw.text((x + w - 104, y + h - 16), "LEONIDA",
               font=font(SANS_B, 11), fill=(255, 255, 255))
 
 
 def art_ipo(draw, x, y, w, h):
-    """Rising bars with a green arrow: the record debut."""
+    """Candlestick chart climbing to the right, green arrow, $83 label."""
     draw.rectangle([x, y, x + w, y + h], fill=(232, 240, 244))
-    base = y + h - 28
-    bars = [12, 18, 16, 26, 24, 34, 44]
-    bw = (w - 24) // len(bars)
-    for i, bh in enumerate(bars):
-        bx = x + 10 + i * bw
-        c = BLUE if i < len(bars) - 1 else GREEN
-        draw.rectangle([bx, base - bh, bx + bw - 5, base], fill=c)
-    draw.line([x + 10, base - 6, x + w - 68, y + 30],
-              fill=GREEN, width=4)
-    draw.polygon([(x + w - 68, y + 30), (x + w - 84, y + 28),
-                  (x + w - 70, y + 44)], fill=GREEN)
+    # faint grid
+    for gy in range(1, 4):
+        draw.line([x + 8, y + gy * h // 4, x + w - 8, y + gy * h // 4],
+                  fill=(210, 220, 228), width=1)
+    base = y + h - 26
+    # (open, close) pairs rising left to right; green up, red down
+    candles = [(6, 12), (10, 16), (14, 13), (18, 24), (21, 28), (26, 34),
+               (32, 40)]
+    cw = (w - 30) // len(candles)
+    for i, (o, c) in enumerate(candles):
+        cx = x + 12 + i * cw + cw // 2
+        top = base - max(o, c)
+        bot = base - min(o, c)
+        col = GREEN if c >= o else (200, 60, 60)
+        draw.line([cx, base - c - 6, cx, base - o + 6], fill=col, width=2)
+        draw.rectangle([cx - cw // 3, top, cx + cw // 3, bot], fill=col)
+    # rising arrow over the candles
+    draw.line([x + 12, base - 10, x + w - 62, y + 26], fill=GREEN, width=4)
+    draw.polygon([(x + w - 62, y + 26), (x + w - 80, y + 24),
+                  (x + w - 64, y + 40)], fill=GREEN)
     draw.text((x + 12, y + 2), "$83", font=font(SANS_B, 26), fill=INK)
     draw.text((x + 74, y + 10), "ANT \u00b7 NASDAQ",
               font=font(SANS_B, 13), fill=BLUE)
-    draw.text((x + 12, y + h - 19), "BIGGEST IPO EVER: $81.3BN",
+    draw.text((x + 12, y + h - 17), "BIGGEST IPO EVER: $81.3BN",
               font=font(SANS_B, 11), fill=GREEN)
 
 
 ART = {1: art_summit, 2: art_gta, 3: art_ipo}
+
+# -------------------------------------------------------------- mid artwork
+# Small scene bands, one per mid story. All PIL primitives.
+def art_court(draw, x, y, w, h):
+    """World Court: pediment + columns on a blue ground."""
+    draw.rectangle([x, y, x + w, y + h], fill=(214, 226, 238))
+    draw.polygon([(x + w // 2 - 46, y + 6), (x + w // 2 + 46, y + 6),
+                  (x + w // 2, y + h - 12)], fill=(255, 255, 255),
+                 outline=(31, 73, 125))
+    for i in range(4):
+        cx = x + w // 2 - 33 + i * 22
+        draw.rectangle([cx - 3, y + 10, cx + 3, y + h - 6],
+                       fill=(31, 73, 125))
+    draw.rectangle([x + w // 2 - 52, y + h - 6, x + w // 2 + 52, y + h - 2],
+                   fill=(31, 73, 125))
+
+
+def art_fire(draw, x, y, w, h):
+    """Street at night: flames over a barricade."""
+    draw.rectangle([x, y, x + w, y + h], fill=(38, 32, 40))
+    draw.rectangle([x, y + h - 8, x + w, y + h], fill=(20, 18, 22))
+    for fx, fh, col in [(w // 2 - 30, 20, (255, 140, 40)),
+                        (w // 2 - 8, 26, (255, 90, 30)),
+                        (w // 2 + 14, 18, (255, 170, 60))]:
+        draw.polygon([(x + fx, y + h - 8), (x + fx + 7, y + h - 8 - fh),
+                      (x + fx + 14, y + h - 8)], fill=col)
+    draw.rectangle([x + 12, y + h - 14, x + w - 12, y + h - 10],
+                   fill=(120, 100, 80))
+    for i in range(5):
+        draw.ellipse([x + 20 + i * 34, y + 6, x + 26 + i * 34, y + 12],
+                     fill=(255, 210, 120))
+
+
+def art_bridge(draw, x, y, w, h):
+    """Kerch bridge over water, blast starburst above the span."""
+    draw.rectangle([x, y, x + w, y + h], fill=(180, 205, 225))
+    draw.rectangle([x, y + h - 10, x + w, y + h], fill=(31, 73, 125))
+    draw.rectangle([x + 8, y + h // 2, x + w - 8, y + h // 2 + 5],
+                   fill=(90, 84, 72))
+    for px in (w // 4, w // 2, 3 * w // 4):
+        draw.rectangle([x + px - 3, y + h // 2 + 5, x + px + 3, y + h - 10],
+                       fill=(90, 84, 72))
+    cx, cy = x + w // 2, y + 12
+    for a in range(8):
+        import math
+        ang = a * math.pi / 4
+        draw.line([cx, cy, cx + int(11 * math.cos(ang)),
+                   cy + int(11 * math.sin(ang))], fill=(255, 190, 40),
+                  width=3)
+    draw.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(255, 220, 90))
+
+
+def art_cyclone(draw, x, y, w, h):
+    """Cyclone spiral over a green coast strip."""
+    draw.rectangle([x, y, x + w, y + h], fill=(178, 214, 220))
+    draw.rectangle([x, y + h - 7, x + w, y + h], fill=(90, 160, 90))
+    cx, cy = x + w // 2, y + h // 2 - 1
+    for r in (5, 10, 15):
+        draw.arc([cx - r, cy - r, cx + r, cy + r], start=20, end=300,
+                 fill=(255, 255, 255), width=3)
+    draw.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(14, 110, 110))
+    for rx in range(0, w, 24):
+        draw.line([x + rx, y + 4, x + rx - 4, y + 12], fill=(255, 255, 255),
+                  width=2)
+
+
+def art_voyager(draw, x, y, w, h):
+    """Deep space: stars, gold dish, one light-day label."""
+    draw.rectangle([x, y, x + w, y + h], fill=(10, 12, 26))
+    rnd = random.Random(8)
+    for _ in range(26):
+        sx = x + rnd.randint(2, w - 3)
+        sy = y + rnd.randint(2, h - 3)
+        draw.ellipse([sx, sy, sx + 1, sy + 1], fill=(255, 255, 255))
+    cx, cy = x + w // 2 + 30, y + h // 2
+    draw.line([cx - 22, cy + 10, cx, cy], fill=(200, 170, 60), width=2)
+    draw.ellipse([cx - 12, cy - 12, cx + 12, cy + 12],
+                 fill=(220, 190, 80), outline=(255, 230, 140))
+    draw.line([cx, cy, cx + 14, cy - 12], fill=(220, 190, 80), width=2)
+    draw.text((x + 8, y + h - 15), "1 LIGHT-DAY OUT",
+              font=font(SANS_B, 10), fill=(255, 220, 140))
+
+
+def art_flags2(draw, x, y, w, h):
+    """India and Japan flags side by side."""
+    draw.rectangle([x, y, x + w, y + h], fill=(238, 232, 214))
+    fw, fh = (w - 24) // 2, h - 10
+    # India: saffron / white / green + wheel dot
+    ix = x + 8
+    for i, c in enumerate([(255, 153, 51), (255, 255, 255), (19, 136, 8)]):
+        draw.rectangle([ix, y + 5 + i * fh // 3, ix + fw,
+                        y + 5 + (i + 1) * fh // 3], fill=c)
+    draw.ellipse([ix + fw // 2 - 4, y + 5 + fh // 2 - 4,
+                  ix + fw // 2 + 4, y + 5 + fh // 2 + 4],
+                 fill=(31, 73, 125))
+    # Japan: white + red disc
+    jx = x + 16 + fw
+    draw.rectangle([jx, y + 5, jx + fw, y + 5 + fh], fill=(255, 255, 255),
+                   outline=(180, 175, 160))
+    draw.ellipse([jx + fw // 2 - 7, y + 5 + fh // 2 - 7,
+                  jx + fw // 2 + 7, y + 5 + fh // 2 + 7],
+                 fill=(188, 0, 45))
+
+
+def art_apec(draw, x, y, w, h):
+    """Shenzhen towers at dusk under a red flag."""
+    draw.rectangle([x, y, x + w, y + h], fill=(240, 214, 200))
+    draw.rectangle([x, y, x + 46, y + 14], fill=(222, 41, 16))
+    draw.ellipse([x + 6, y + 2, x + 13, y + 9], fill=(255, 222, 0))
+    rnd = random.Random(10)
+    bx = x + 52
+    while bx < x + w - 8:
+        bw = rnd.randint(12, 22)
+        bh = rnd.randint(12, h - 16)
+        draw.rectangle([bx, y + h - 6 - bh, bx + bw, y + h - 6],
+                       fill=(90, 60, 70))
+        for wy in range(2):
+            draw.rectangle([bx + 3, y + h - 4 - bh + wy * 8, bx + 7,
+                            y + h - 1 - bh + wy * 8], fill=(255, 210, 120))
+        bx += bw + 3
+    draw.rectangle([x, y + h - 6, x + w, y + h], fill=(120, 84, 50))
+
+
+def art_gold(draw, x, y, w, h):
+    """Stacked gold bars on dark green, $3,743 label."""
+    draw.rectangle([x, y, x + w, y + h], fill=(24, 52, 40))
+    for row, (bx, bw) in enumerate([(w // 2 - 34, 68), (w // 2 - 26, 52),
+                                    (w // 2 - 18, 36)]):
+        by = y + h - 10 - (row + 1) * 9
+        draw.polygon([(x + bx, by + 9), (x + bx + 4, by),
+                      (x + bx + bw - 4, by), (x + bx + bw, by + 9)],
+                     fill=(232, 190, 60), outline=(176, 124, 12))
+    draw.text((x + 8, y + 3), "$3,743", font=font(SANS_B, 15),
+              fill=(255, 220, 140))
+
+
+MID_ART = {4: art_court, 5: art_fire, 6: art_bridge, 7: art_cyclone,
+           8: art_voyager, 9: art_flags2, 10: art_apec, 11: art_gold}
+
 
 # ------------------------------------------------------------------- panels
 def hero_panel(draw, x, y, w, h, story):
     num, kind, tag, head, cap, lon, lat, cont = story
     draw.rectangle([x, y, x + w, y + h], fill=PANEL, outline=PANEL_EDGE)
     color = TAG_COLORS[tag]
-    ART[num](draw, x + 8, y + 8, w - 16, 88)
-    badge(draw, x + 24, y + 116, num, color, r=12)
-    draw.text((x + 42, y + 108), tag, font=font(SANS_B, 12), fill=color)
-    draw.line([x + 10, y + 132, x + w - 10, y + 132], fill=PANEL_EDGE)
-    yy = draw_wrapped(draw, x + 10, y + 138, head, font(SERIF_B, 20),
-                      w - 20, leading=24)
-    draw_wrapped(draw, x + 10, yy + 4, cap, font(SANS, 13), w - 20,
-                 leading=17, fill=(48, 48, 48))
+    ART[num](draw, x + 8, y + 8, w - 16, 80)
+    badge(draw, x + 24, y + 104, num, color, r=12)
+    draw.text((x + 42, y + 96), tag, font=font(SANS_B, 12), fill=color)
+    draw.line([x + 10, y + 118, x + w - 10, y + 118], fill=PANEL_EDGE)
+    head_lines = wrap(draw, head, font(SERIF_B, 19), w - 20)
+    if len(head_lines) > 2:
+        raise SystemExit(f"HERO #{num} headline wraps to "
+                         f"{len(head_lines)} lines")
+    yy = draw_wrapped(draw, x + 10, y + 124, head, font(SERIF_B, 19),
+                      w - 20, leading=23)
+    cap_lines = wrap(draw, cap, font(SANS, 12), w - 20)
+    if len(cap_lines) > 3:
+        raise SystemExit(f"HERO #{num} caption wraps to "
+                         f"{len(cap_lines)} lines")
+    draw_wrapped(draw, x + 10, yy + 4, cap, font(SANS, 12), w - 20,
+                 leading=15, fill=(48, 48, 48))
 
 
 def mid_panel(draw, x, y, w, h, story):
     num, kind, tag, head, cap, lon, lat, cont = story
     draw.rectangle([x, y, x + w, y + h], fill=PANEL, outline=PANEL_EDGE)
     color = TAG_COLORS[tag]
-    badge(draw, x + 20, y + 20, num, color, r=11)
-    draw.text((x + 36, y + 13), tag, font=font(SANS_B, 11), fill=color)
-    draw.line([x + 8, y + 36, x + w - 8, y + 36], fill=PANEL_EDGE)
-    yy = draw_wrapped(draw, x + 8, y + 42, head, font(SERIF_B, 15),
-                      w - 16, leading=18)
-    draw_wrapped(draw, x + 8, yy + 3, cap, font(SANS, 11), w - 16,
-                 leading=14, fill=(48, 48, 48))
+    MID_ART[num](draw, x + 6, y + 6, w - 12, 32)
+    draw.text((x + 8, y + 42), tag, font=font(SANS_B, 11), fill=color)
+    head_lines = wrap(draw, head, font(SERIF_B, 14), w - 16)
+    if len(head_lines) > 2:
+        raise SystemExit(f"MID #{num} headline wraps to "
+                         f"{len(head_lines)} lines")
+    yy = draw_wrapped(draw, x + 8, y + 56, head, font(SERIF_B, 14),
+                      w - 16, leading=16)
+    cap_lines = wrap(draw, cap, font(SANS, 10), w - 16)
+    if len(cap_lines) > 2:
+        raise SystemExit(f"MID #{num} caption wraps to "
+                         f"{len(cap_lines)} lines: {cap_lines}")
+    draw_wrapped(draw, x + 8, yy + 2, cap, font(SANS, 10), w - 16,
+                 leading=13, fill=(48, 48, 48))
 
 
 def numbers_strip(draw, x, y, w, h):
-    bw = (w - 3 * 10) // 4
+    n = len(NUMBERS)
+    bw = (w - (n - 1) * 8) // n
     for i, (big, small) in enumerate(NUMBERS):
-        bx = x + i * (bw + 10)
+        bx = x + i * (bw + 8)
         draw.rectangle([bx, y, bx + bw, y + h], fill=PANEL,
                        outline=PANEL_EDGE)
-        draw.text((bx + bw // 2, y + 1), big, font=font(SERIF_B, 20),
+        draw.text((bx + bw // 2, y + 2), big, font=font(SERIF_B, 17),
                   fill=RED, anchor="ma")
-        draw.text((bx + bw // 2, y + h - 11), small, font=font(SANS_B, 9),
+        # label: one centred line at the bottom; shrink to 7pt if it
+        # would wrap, so it can never collide with the big number
+        lab_f = font(SANS_B, 8)
+        if draw.textlength(small, font=lab_f) > bw - 10:
+            lab_f = font(SANS_B, 7)
+        if draw.textlength(small, font=lab_f) > bw - 6:
+            raise SystemExit(f"STRIP label too wide: {small!r}")
+        draw.text((bx + bw // 2, y + h - 11), small, font=lab_f,
                   fill=MUTED, anchor="ma")
 
 
 def also_entry(draw, cx, yy, cw, num, tag, cap, color):
-    """One also-on line: badge + bold tag, caption wraps full-width after
-    the first line so each entry costs 2 lines, not 3. Returns new yy."""
-    badge(draw, cx + 11, yy + 9, num, color, r=10)
-    lf = font(SANS_B, 11)
-    bf = font(SANS, 11)
+    """One also-on line: badge + bold lead, caption wraps after the lead
+    on the first line and full-width (indented) after that. Returns new yy.
+    Raises if the entry needs more than 3 lines."""
+    badge(draw, cx + 9, yy + 8, num, color, r=9)
+    lf = font(SANS_B, 10)
+    bf = font(SANS, 10)
     lead = tag + " \u2014 "
     tw = draw.textlength(lead, font=lf)
     first_w = cw - 26 - tw
@@ -524,14 +709,18 @@ def also_entry(draw, cx, yy, cw, num, tag, cap, color):
             idx = i + 1
         else:
             break
-    rest = words[idx:]
+    rest = " ".join(words[idx:])
     draw.text((cx + 26, yy), lead, font=lf, fill=color)
     draw.text((cx + 26 + tw, yy), cur, font=bf, fill=(48, 48, 48))
-    yy += 13
-    for line in wrap(draw, " ".join(rest), bf, cw - 26):
+    yy += 12
+    rest_lines = wrap(draw, rest, bf, cw - 26) if rest else []
+    if 1 + len(rest_lines) > 3:
+        raise SystemExit(f"ALSO #{num} needs {1 + len(rest_lines)} lines: "
+                         f"{cap!r}")
+    for line in rest_lines:
         draw.text((cx + 26, yy), line, font=bf, fill=(48, 48, 48))
-        yy += 13
-    return yy + 4
+        yy += 12
+    return yy + 2
 
 
 def also_panel(draw, x, y, w, h):
@@ -540,19 +729,18 @@ def also_panel(draw, x, y, w, h):
               font=font(SANS_B, 13), fill=INK)
     draw.line([x + 12, y + 30, x + w - 12, y + 30], fill=RULE, width=1)
     also = [s for s in STORIES if s[1] == "also"]
-    cols = [also[0:10], also[10:19], also[19:28]]
+    cols = [also[0:7], also[7:13], also[13:19]]
     cw = (w - 24 - 2 * 12) // 3
+    limit = y + h - 4
     for ci, col in enumerate(cols):
         cx = x + 12 + ci * (cw + 12)
-        yy = y + 40
+        yy = y + 38
         for num, kind, tag, head, cap, lon, lat, cont in col:
             yy = also_entry(draw, cx, yy, cw, num, tag, cap,
                             CONT_COLORS[cont])
-    fy = y + h - 18
-    draw.text((x + 12, fy),
-              "8  Voyager 1 has no dot: it is in deep space, one "
-              "light-day out.",
-              font=font(SANS, 11), fill=MUTED)
+        if yy > limit:
+            raise SystemExit(f"ALSO column {ci + 1} overflows by "
+                             f"{yy - limit}px")
 
 
 # ---------------------------------------------------------------------- map
@@ -563,20 +751,13 @@ def project(lon, lat, mx, my, mw, mh):
     return px, py
 
 
+# Only these 12 stories get a numbered map marker (budget 12 max).
+MAP_NUMBERS = [1, 2, 4, 5, 6, 7, 9, 14, 17, 18, 19, 21]
 # Badge offsets (dx, dy) from the true anchor, for colliding markers.
-# Shenzhen/Hong Kong ring, New York ring, Seoul/Tokyo, Jakarta, Gaza/Amman/
-# Antalya/Riyadh, western Europe cluster, Sydney/Canberra, Dhaka/Akvan.
 OFFSETS = {
-    1: (0, -30), 10: (-24, -18), 12: (24, -18), 18: (-29, 6),
-    19: (29, 6), 26: (-12, 27), 23: (12, 27),
-    2: (0, -20), 3: (-20, 0), 29: (20, 0), 35: (0, 20),
-    9: (-8, -20), 17: (-14, -20), 20: (30, -4),
-    14: (4, -24),
-    22: (-8, -12), 33: (10, 10),
-    16: (18, 12), 27: (-6, 22), 31: (24, -10), 34: (-28, -20),
-    4: (22, 10), 36: (22, -10), 15: (-24, 12), 11: (-24, -8),
-    28: (12, -12), 30: (-12, 10),
-    5: (-34, -16), 7: (-34, 8),
+    1: (0, -24), 2: (0, -22), 4: (0, -22), 5: (-30, -8),
+    6: (0, -22), 7: (-34, 14), 9: (14, -18), 14: (18, 16),
+    17: (0, 22), 18: (-24, 12), 19: (-18, -20), 21: (-26, 0),
 }
 
 
@@ -590,25 +771,24 @@ def map_panel(draw, x, y, w, h):
         for poly in polys:
             pts = [project(lon, lat, mx, my, mw, mh) for lon, lat in poly]
             draw.polygon(pts, fill=MAP_LAND, outline=(170, 158, 130))
-    for num, kind, tag, head, cap, lon, lat, cont in STORIES:
-        if lon is None:
-            continue
+    by_num = {s[0]: s for s in STORIES}
+    for num in MAP_NUMBERS:
+        _, _, _, _, _, lon, lat, cont = by_num[num]
         px, py = project(lon, lat, mx, my, mw, mh)
-        dx, dy = OFFSETS.get(num, (0, -13))
+        dx, dy = OFFSETS[num]
         bx, by = px + dx, py + dy
-        if (dx, dy) != (0, -13):
-            draw.line([px, py, bx, by], fill=(90, 84, 72), width=1)
+        draw.line([px, py, bx, by], fill=(90, 84, 72), width=1)
         draw.ellipse([px - 2, py - 2, px + 2, py + 2], fill=(90, 84, 72))
-        badge(draw, bx, by, num, CONT_COLORS[cont], r=9)
+        badge(draw, bx, by, num, CONT_COLORS[cont], r=10)
     lf = font(SANS_B, 10)
     for row, items in enumerate([
             [("ASIA", CONT_COLORS["asia"]),
              ("N. AMERICA", CONT_COLORS["namerica"]),
              ("EUROPE", CONT_COLORS["europe"])],
-            [("AFRICA", CONT_COLORS["africa"]),
-             ("OCEANIA", CONT_COLORS["oceania"]),
-             ("8 = DEEP SPACE", None)]]):
-        ly = y + h - 30 + row * 14
+            [("OCEANIA", CONT_COLORS["oceania"]),
+             ("8 = DEEP SPACE", None),
+             ("NYC = 2\u00b73\u00b727", None)]]):
+        ly = y + h - 34 + row * 14
         lx = x + 12
         for name, color in items:
             if color is not None:
@@ -616,6 +796,7 @@ def map_panel(draw, x, y, w, h):
                 lx += 13
             draw.text((lx, ly - 1), name, font=lf, fill=MUTED)
             lx += draw.textlength(name, font=lf) + 14
+
 
 # --------------------------------------------------------------------- page
 def build():
@@ -626,42 +807,43 @@ def build():
 
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
-    m = 24  # outer margin
+    m = 20  # outer margin
 
     # masthead
     d.text((W // 2, m), "THE WORLD IN ONE DAY",
-           font=font(SERIF_B, 42), fill=INK, anchor="ma")
-    d.text((W // 2, m + 46), "Thursday 19 November 2026",
-           font=font(SERIF, 18), fill=MUTED, anchor="ma")
+           font=font(SERIF_B, 40), fill=INK, anchor="ma")
+    d.text((W // 2, m + 44), "Thursday 19 November 2026",
+           font=font(SERIF, 17), fill=MUTED, anchor="ma")
     d.line([m, m + 70, W - m, m + 70], fill=RULE, width=2)
-    d.text((W // 2, m + 76), COUNT_LINE, font=font(SANS_B, 16),
+    d.text((W // 2, m + 76), COUNT_LINE, font=font(SANS_B, 15),
            fill=RED, anchor="ma")
-    d.line([m, m + 98, W - m, m + 98], fill=RULE, width=1)
+    d.line([m, m + 96, W - m, m + 96], fill=RULE, width=1)
 
     # by-the-numbers strip
-    numbers_strip(d, m, m + 104, W - 2 * m, 30)
+    numbers_strip(d, m, m + 104, W - 2 * m, 32)
 
     # heroes: 3 across
-    hy = m + 142
-    hh = 244
-    gap = 12
+    hy = m + 144
+    hh = 224
+    gap = 10
     hw = (W - 2 * m - 2 * gap) // 3
     heroes = [s for s in STORIES if s[1] == "hero"]
     for i, s in enumerate(heroes):
         hero_panel(d, m + i * (hw + gap), hy, hw, hh, s)
 
-    # mids: 5 across
-    my = hy + hh + gap
-    mh = 144
-    mw = (W - 2 * m - 4 * gap) // 5
+    # mids: 2 rows x 4
+    my = hy + hh + 8
+    mh = 116
+    mw = (W - 2 * m - 3 * gap) // 4
     mids = [s for s in STORIES if s[1] == "mid"]
-    for i, s in enumerate(mids):
-        mid_panel(d, m + i * (mw + gap), my, mw, mh, s)
+    for r in range(2):
+        for i, s in enumerate(mids[r * 4:(r + 1) * 4]):
+            mid_panel(d, m + i * (mw + gap), my + r * (mh + 8), mw, mh, s)
 
     # map (left) + also-on (right)
-    by = my + mh + gap
-    bh = 382
-    map_w = 360
+    by = my + 2 * mh + 8 + 8
+    bh = 316
+    map_w = 340
     map_panel(d, m, by, map_w, bh)
     also_panel(d, m + map_w + gap, by, W - 2 * m - map_w - gap, bh)
 
